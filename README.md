@@ -8,11 +8,15 @@ We want to make a micro service that will be written in TypeScript and communica
 
 This service will analyze articles in the database by sending articles in a curated prompt to the ChatGPT API.
 
-The service will loop over the articles in descending order by Article.id (The Articles table id). It will also filter on articles whose News Nexus Semantic rating is above .4. To do this the service will:
+The service will loop over the articles in descending order by Article.id (The Articles table id). The service will run until it hits the approval goal determined by the .env variable called TARGET_APPROVED_ARTICLE_COUNT. TARGET_APPROVED_ARTICLE_COUNT is a number. If there are no more articles to analyze, based on the selction criteria, the service will exit.
 
-### Step 1: Select article
+To do this the service will:
 
-query the ArticleEntityWhoCategorizedArticleContract table filter on the articleId and the entityWhoCategorizesId equal to the “NewsNexusSemanticScorer02”. To get the entityWhoCategorizesId value the service will use the relationship between the ArtificialIntelligences table and the EntityWhoCategorizedArticle table. I expect it to be “3” but in the case that it is not we want to use the “NewsNexusSemanticScorer02” because that is the entity that rates the articles for the News Nexus Semantic Score. In the ArticleEntityWhoCategorizedArticleContract table use the keywordRating field and verify the article has a score of above 0.40.
+### Step 1: Article Selection
+
+The service will select articles in descending order by Article.id (The Articles table id). It will also filter on articles whose News Nexus Semantic rating is above .4. Also articles that have already been approved will be filtered out, by checking the ArticleApproveds or ArticlesApproved02 tables for the articleId.
+
+To determine the News Nexus Semantic rating the service will query the ArticleEntityWhoCategorizedArticleContract table filter on the articleId and the entityWhoCategorizesId equal to the “NewsNexusSemanticScorer02”. To get the entityWhoCategorizesId value the service will use the relationship between the ArtificialIntelligences table and the EntityWhoCategorizedArticle table. I expect it to be “3” but in the case that it is not we want to use the “NewsNexusSemanticScorer02” because that is the entity that rates the articles for the News Nexus Semantic Score. In the ArticleEntityWhoCategorizedArticleContract table use the keywordRating field and verify the article has a score of above 0.40.
 
 ### Step 2: scrap content
 
