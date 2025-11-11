@@ -19,11 +19,20 @@ NewsNexus LLM Article Analyzer 03 is a TypeScript microservice that connects to 
 
 The service implements a 5-step sequential pipeline:
 
-1. **Article Selection**: Queries articles with NewsNexusSemanticScorer02 rating > 0.4, processing in descending order by Article.id
+1. **Article Selection**: Queries articles in descending order by Article.id with multiple filters:
+   - NewsNexusSemanticScorer02 rating > 0.4 (via ArticleEntityWhoCategorizedArticleContract.keywordRating)
+   - **Must NOT exist in ArticleApproveds OR ArticlesApproved02 tables** (prevents duplicate processing)
 2. **Content Scraping**: Two-tier approach - cheerio (fast) with puppeteer (robust) fallback if < 250 characters or failure, 10s timeout each
 3. **Prompt Generation**: Template at `src/templates/prompt02.md` with placeholders: `<< ARTICLE_TITLE >>`, `<< ARTICLE_DESCRIPTION >>`, `<< ARTICLE_SCRAPED_CONTENT >>`
 4. **LLM Analysis**: OpenAI API (gpt-4o-mini, max_tokens: 100, temperature: 0) returns structured JSON with product, state, hazard, relevance_score, united_states_score
 5. **Result Recording**: Updates ArticlesApproved02, ArticleStateContract, and ArticleEntityWhoCategorizedArticleContracts02 based on relevance_score (approved if 7-10)
+
+### Service Exit Conditions
+
+The service runs in a loop until one of two conditions is met:
+
+1. **Target Reached**: Number of approved articles (isApproved: true in ArticlesApproved02) reaches TARGET_APPROVED_ARTICLE_COUNT
+2. **No More Articles**: No articles remain that match the selection criteria (semantic rating > 0.4, not previously processed)
 
 ### Key Business Rules
 
@@ -49,8 +58,10 @@ Required variables in `.env`:
 
 - **Articles**: Core article storage with title, description, url, publishedDate
 - **ArticleContents**: Scraped content with scrapeStatusCheerio and scrapeStatusPuppeteer flags
-- **ArticlesApproved02**: AI approval decisions (artificialIntelligenceId FK, isApproved flag)
+- **ArticleApproveds**: Human user approval decisions (userId FK, isApproved flag) - check for duplicate processing
+- **ArticlesApproved02**: AI approval decisions (artificialIntelligenceId FK, isApproved flag) - check for duplicate processing
 - **ArticleStateContract**: Article-to-State many-to-many junction
+- **ArticleEntityWhoCategorizedArticleContract**: Links articles to categorizers with keyword and keywordRating (used for semantic score filtering)
 - **ArticleEntityWhoCategorizedArticleContracts02**: Flexible key-value storage for AI responses
 - **ArtificialIntelligences**: AI system registry (lookup NewsNexusSemanticScorer02 here)
 - **EntityWhoCategorizedArticle**: Links AI systems to categorization actions
