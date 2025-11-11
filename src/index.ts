@@ -1,5 +1,10 @@
 import * as dotenv from "dotenv";
 import { Op } from "sequelize";
+import * as cheerio from "cheerio";
+import puppeteer from "puppeteer";
+import axios from "axios";
+import * as fs from "fs/promises";
+import OpenAI from "openai";
 
 // Load environment variables
 dotenv.config();
@@ -9,22 +14,32 @@ import {
   initModels,
   sequelize,
   Article,
+  ArticleContent,
   ArticleEntityWhoCategorizedArticleContract,
+  ArticleEntityWhoCategorizedArticleContracts02,
+  ArticleStateContract,
   ArtificialIntelligence,
   EntityWhoCategorizedArticle,
   ArticleApproved,
   ArticlesApproved02,
+  State,
 } from "newsnexus10db";
 
 // Environment variables
 const NAME_APP = process.env.NAME_APP;
+const KEY_OPEN_AI = process.env.KEY_OPEN_AI;
 const TARGET_APPROVED_ARTICLE_COUNT = parseInt(
   process.env.TARGET_APPROVED_ARTICLE_COUNT || "0",
   10
 );
 
+// Initialize OpenAI client
+const openai = new OpenAI({ apiKey: KEY_OPEN_AI });
+
 // Cached IDs looked up at startup
 let semanticScorerEntityId: number;
+let analyzerEntityId: number; // For this microservice's EntityWhoCategorizedArticle ID
+let analyzerAiSystemId: number; // For this microservice's ArtificialIntelligence ID
 
 /**
  * Look up the entityWhoCategorizesId for "NewsNexusSemanticScorer02"
@@ -59,6 +74,57 @@ async function lookupSemanticScorerEntityId(): Promise<number> {
   console.log(`Found EntityWhoCategorizedArticle ID: ${entity.id}`);
 
   return entity.id;
+}
+
+/**
+ * Look up the entityWhoCategorizesId for this microservice (NAME_APP)
+ */
+async function lookupAnalyzerEntityId(): Promise<{
+  entityId: number;
+  aiSystemId: number;
+}> {
+  console.log(`\nLooking up "${NAME_APP}" entity...`);
+
+  if (!NAME_APP) {
+    throw new Error(
+      "NAME_APP environment variable is not set. Cannot determine microservice identity."
+    );
+  }
+
+  // Find the AI system by name
+  const aiSystem = await ArtificialIntelligence.findOne({
+    where: { name: NAME_APP },
+  });
+
+  if (!aiSystem) {
+    throw new Error(
+      `Could not find AI system "${NAME_APP}" in ArtificialIntelligences table. ` +
+        `Please add an entry with name="${NAME_APP}" before running this service.`
+    );
+  }
+
+  console.log(`Found AI system: ${aiSystem.name} (ID: ${aiSystem.id})`);
+
+  // Find the corresponding EntityWhoCategorizedArticle
+  const entity = await EntityWhoCategorizedArticle.findOne({
+    where: { artificialIntelligenceId: aiSystem.id },
+  });
+
+  if (!entity) {
+    throw new Error(
+      `Could not find EntityWhoCategorizedArticle for AI system "${NAME_APP}" (ID: ${aiSystem.id}). ` +
+        `Please create an EntityWhoCategorizedArticle entry for this AI system.`
+    );
+  }
+
+  console.log(
+    `Found EntityWhoCategorizedArticle ID: ${entity.id} (will be used for recording analysis results)`
+  );
+
+  return {
+    entityId: entity.id,
+    aiSystemId: aiSystem.id,
+  };
 }
 
 /**
@@ -118,6 +184,361 @@ async function getEligibleArticles(
 }
 
 /**
+ * Step 2: Scrape article content using cheerio
+ */
+async function scrapeWithCheerio(url: string): Promise<string | null> {
+  try {
+    const response = await axios.get(url, { timeout: 10000 });
+    const $ = cheerio.load(response.data);
+
+    // Remove script and style elements
+    $("script, style").remove();
+
+    // Try to find main content areas (common article selectors)
+    let content = "";
+    const selectors = [
+      "article",
+      '[role="main"]',
+      ".article-content",
+      ".post-content",
+      ".entry-content",
+      "main",
+    ];
+
+    for (const selector of selectors) {
+      const element = $(selector);
+      if (element.length > 0) {
+        content = element.text();
+        break;
+      }
+    }
+
+    // Fallback to body if no content found
+    if (!content) {
+      content = $("body").text();
+    }
+
+    // Clean up whitespace
+    content = content.replace(/\s+/g, " ").trim();
+
+    return content.length >= 250 ? content : null;
+  } catch (error) {
+    console.log(`  Cheerio scraping failed: ${error}`);
+    return null;
+  }
+}
+
+/**
+ * Step 2: Scrape article content using puppeteer
+ */
+async function scrapeWithPuppeteer(url: string): Promise<string | null> {
+  let browser = null;
+  try {
+    browser = await puppeteer.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.goto(url, { timeout: 10000, waitUntil: "domcontentloaded" });
+
+    // Extract text content (runs in browser context)
+    const content = await page.evaluate(() => {
+      // @ts-expect-error - DOM types available in browser context
+      const scripts = document.querySelectorAll("script, style");
+      // @ts-expect-error - el type is Element in browser context
+      scripts.forEach((el) => el.remove());
+
+      const selectors = [
+        "article",
+        '[role="main"]',
+        ".article-content",
+        ".post-content",
+        ".entry-content",
+        "main",
+        "body",
+      ];
+
+      for (const selector of selectors) {
+        // @ts-expect-error - DOM types available in browser context
+        const element = document.querySelector(selector);
+        if (element) {
+          return element.textContent || "";
+        }
+      }
+
+      // @ts-expect-error - DOM types available in browser context
+      return document.body.textContent || "";
+    });
+
+    // Clean up whitespace
+    const cleanContent = content.replace(/\s+/g, " ").trim();
+
+    await browser.close();
+    return cleanContent.length >= 250 ? cleanContent : null;
+  } catch (error) {
+    console.log(`  Puppeteer scraping failed: ${error}`);
+    if (browser) {
+      await browser.close();
+    }
+    return null;
+  }
+}
+
+/**
+ * Step 2: Get or scrape article content
+ */
+async function getArticleContent(article: Article): Promise<string> {
+  console.log("  Step 2: Retrieving article content...");
+
+  // Check if content already exists
+  let articleContent = await ArticleContent.findOne({
+    where: { articleId: article.id },
+  });
+
+  if (articleContent && articleContent.content) {
+    console.log("  ✓ Using existing scraped content");
+    return articleContent.content;
+  }
+
+  // If no content exists, we'll scrape it
+  // (We'll create the record after scraping)
+
+  // Check if article has a URL
+  if (!article.url) {
+    console.log("  ⚠ No URL available, using description");
+    const fallbackContent = article.description || "";
+    await ArticleContent.create({
+      articleId: article.id,
+      content: fallbackContent,
+      scrapeStatusCheerio: false,
+      scrapeStatusPuppeteer: false,
+    });
+    return fallbackContent;
+  }
+
+  console.log("  Scraping with cheerio...");
+  const cheerioContent = await scrapeWithCheerio(article.url);
+
+  if (cheerioContent) {
+    console.log(`  ✓ Cheerio successful (${cheerioContent.length} chars)`);
+    if (articleContent) {
+      await articleContent.update({
+        content: cheerioContent,
+        scrapeStatusCheerio: true,
+        scrapeStatusPuppeteer: null,
+      });
+    } else {
+      await ArticleContent.create({
+        articleId: article.id,
+        content: cheerioContent,
+        scrapeStatusCheerio: true,
+        scrapeStatusPuppeteer: null,
+      });
+    }
+    return cheerioContent;
+  }
+
+  // Cheerio failed, try puppeteer
+  console.log("  Cheerio failed, trying puppeteer...");
+  if (articleContent) {
+    await articleContent.update({ scrapeStatusCheerio: false });
+  }
+
+  const puppeteerContent = await scrapeWithPuppeteer(article.url);
+
+  if (puppeteerContent) {
+    console.log(`  ✓ Puppeteer successful (${puppeteerContent.length} chars)`);
+    if (articleContent) {
+      await articleContent.update({
+        content: puppeteerContent,
+        scrapeStatusPuppeteer: true,
+      });
+    } else {
+      await ArticleContent.create({
+        articleId: article.id,
+        content: puppeteerContent,
+        scrapeStatusCheerio: false,
+        scrapeStatusPuppeteer: true,
+      });
+    }
+    return puppeteerContent;
+  }
+
+  // Both failed
+  console.log("  ✗ Both scraping methods failed");
+  const fallbackContent = article.description || "";
+
+  if (articleContent) {
+    await articleContent.update({
+      content: fallbackContent,
+      scrapeStatusPuppeteer: false
+    });
+  } else {
+    await ArticleContent.create({
+      articleId: article.id,
+      content: fallbackContent,
+      scrapeStatusCheerio: false,
+      scrapeStatusPuppeteer: false,
+    });
+  }
+
+  // Return description as fallback
+  return fallbackContent;
+}
+
+/**
+ * Step 3: Generate prompt using template
+ */
+async function generatePrompt(
+  article: Article,
+  scrapedContent: string
+): Promise<string> {
+  console.log("  Step 3: Generating prompt...");
+
+  const templatePath = "src/templates/prompt02.md";
+  let template = await fs.readFile(templatePath, "utf-8");
+
+  template = template.replace("<< ARTICLE_TITLE >>", article.title || "");
+  template = template.replace(
+    "<< ARTICLE_DESCRIPTION >>",
+    article.description || ""
+  );
+  template = template.replace("<< ARTICLE_SCRAPED_CONTENT >>", scrapedContent);
+
+  console.log("  ✓ Prompt generated");
+  return template;
+}
+
+/**
+ * Step 4: Send request to OpenAI API
+ */
+async function analyzeWithOpenAI(
+  prompt: string
+): Promise<{
+  product: string;
+  state: string;
+  hazard: string;
+  relevance_score: number;
+  united_states_score: number;
+} | null> {
+  console.log("  Step 4: Sending request to OpenAI...");
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 100,
+      temperature: 0,
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      console.log("  ✗ No response from OpenAI");
+      return null;
+    }
+
+    // Parse JSON response
+    const parsed = JSON.parse(content);
+
+    // Validate structure
+    if (
+      typeof parsed.product === "string" &&
+      typeof parsed.state === "string" &&
+      typeof parsed.hazard === "string" &&
+      typeof parsed.relevance_score === "number" &&
+      typeof parsed.united_states_score === "number"
+    ) {
+      console.log(`  ✓ OpenAI response: relevance_score=${parsed.relevance_score}`);
+      return parsed;
+    } else {
+      console.log("  ✗ Invalid response format");
+      return null;
+    }
+  } catch (error) {
+    console.log(`  ✗ OpenAI error: ${error}`);
+    return null;
+  }
+}
+
+/**
+ * Step 5: Record results to database
+ */
+async function recordResults(
+  article: Article,
+  scrapedContent: string,
+  apiResponse: {
+    product: string;
+    state: string;
+    hazard: string;
+    relevance_score: number;
+    united_states_score: number;
+  } | null
+): Promise<boolean> {
+  console.log("  Step 5: Recording results...");
+
+  const isApproved =
+    apiResponse !== null &&
+    [7, 8, 9, 10].includes(apiResponse.relevance_score);
+
+  // Create ArticlesApproved02 record
+  await ArticlesApproved02.create({
+    articleId: article.id,
+    artificialIntelligenceId: analyzerAiSystemId,
+    isApproved,
+    textForPdfReport: scrapedContent || article.description || "",
+  });
+
+  console.log(`  ✓ ArticlesApproved02 created (isApproved: ${isApproved})`);
+
+  // If we have a valid API response, record the key-value pairs
+  if (apiResponse) {
+    const records = [
+      { key: "product", valueString: apiResponse.product },
+      { key: "state", valueString: apiResponse.state },
+      { key: "hazard", valueString: apiResponse.hazard },
+      { key: "relevance_score", valueNumber: apiResponse.relevance_score },
+      {
+        key: "united_states_score",
+        valueNumber: apiResponse.united_states_score,
+      },
+    ];
+
+    for (const record of records) {
+      await ArticleEntityWhoCategorizedArticleContracts02.create({
+        articleId: article.id,
+        entityWhoCategorizesId: analyzerEntityId,
+        key: record.key,
+        valueString: record.valueString || null,
+        valueNumber: record.valueNumber || null,
+        valueBoolean: null,
+      });
+    }
+
+    console.log("  ✓ ArticleEntityWhoCategorizedArticleContracts02 records created");
+
+    // If approved, try to link the state
+    if (isApproved && apiResponse.state) {
+      const stateName = apiResponse.state.toLowerCase();
+      const state = await State.findOne({
+        where: sequelize.where(
+          sequelize.fn("LOWER", sequelize.col("name")),
+          stateName
+        ),
+      });
+
+      if (state) {
+        await ArticleStateContract.create({
+          articleId: article.id,
+          stateId: state.id,
+        });
+        console.log(`  ✓ ArticleStateContract created (state: ${state.name})`);
+      } else {
+        console.log(`  ⚠ State "${apiResponse.state}" not found in database`);
+      }
+    }
+  }
+
+  return isApproved;
+}
+
+/**
  * Main processing loop
  */
 async function processArticles() {
@@ -132,6 +553,11 @@ async function processArticles() {
 
   // Lookup semantic scorer entity ID at startup
   semanticScorerEntityId = await lookupSemanticScorerEntityId();
+
+  // Lookup this microservice's entity ID at startup (required for Step 5)
+  const analyzerIds = await lookupAnalyzerEntityId();
+  analyzerEntityId = analyzerIds.entityId;
+  analyzerAiSystemId = analyzerIds.aiSystemId;
 
   // Get previously processed article IDs
   const excludeArticleIds = await getPreviouslyProcessedArticleIds();
@@ -150,6 +576,7 @@ async function processArticles() {
   // Tracking counters
   let articlesAnalyzed = 0;
   let articlesApproved = 0;
+  let consecutiveOpenAiFailures = 0;
 
   console.log("=== Starting Article Processing ===\n");
 
@@ -166,15 +593,56 @@ async function processArticles() {
       `  Progress: ${articlesApproved}/${TARGET_APPROVED_ARTICLE_COUNT} approved`
     );
 
-    // TODO: Steps 2-5 will be implemented next
-    // For now, we're just selecting and logging articles
+    try {
+      // Step 2: Get article content (scrape or use existing)
+      const scrapedContent = await getArticleContent(article);
 
-    // Check if we've reached our target (in future, this will check actual approvals)
-    if (articlesApproved >= TARGET_APPROVED_ARTICLE_COUNT) {
-      console.log(
-        `\n✓ Target reached: ${articlesApproved}/${TARGET_APPROVED_ARTICLE_COUNT} articles approved`
-      );
-      break;
+      // Step 3: Generate prompt
+      const prompt = await generatePrompt(article, scrapedContent);
+
+      // Step 4: Analyze with OpenAI
+      const apiResponse = await analyzeWithOpenAI(prompt);
+
+      if (apiResponse === null) {
+        // OpenAI failed
+        consecutiveOpenAiFailures++;
+        console.log(
+          `  ⚠ OpenAI failure (${consecutiveOpenAiFailures}/3 consecutive)`
+        );
+
+        if (consecutiveOpenAiFailures >= 3) {
+          throw new Error(
+            "3 consecutive OpenAI failures. Exiting service."
+          );
+        }
+
+        // Skip this article and continue to next
+        continue;
+      }
+
+      // Reset consecutive failures on success
+      consecutiveOpenAiFailures = 0;
+
+      // Step 5: Record results
+      const approved = await recordResults(article, scrapedContent, apiResponse);
+
+      if (approved) {
+        articlesApproved++;
+        console.log(`  ✓ Article APPROVED (${articlesApproved}/${TARGET_APPROVED_ARTICLE_COUNT})`);
+      } else {
+        console.log("  ✗ Article not approved");
+      }
+
+      // Check if we've reached our target
+      if (articlesApproved >= TARGET_APPROVED_ARTICLE_COUNT) {
+        console.log(
+          `\n✓ Target reached: ${articlesApproved}/${TARGET_APPROVED_ARTICLE_COUNT} articles approved`
+        );
+        break;
+      }
+    } catch (error) {
+      console.error(`  ✗ Error processing article: ${error}`);
+      throw error;
     }
   }
 
