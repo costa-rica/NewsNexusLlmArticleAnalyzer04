@@ -1,0 +1,33 @@
+{
+  "name": "newsnexus-llm-article-analyzer-04",
+  "version": "1.0.0",
+  "description": "TypeScript microservice for analyzing NewsNexus articles using OpenAI GPT-4o",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "start": "node dist/index.js",
+    "watch": "tsc --watch"
+  },
+  "keywords": [
+    "newsnexus",
+    "article-analyzer",
+    "openai",
+    "typescript"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.12",
+    "dotenv": "^16.4.5",
+    "newsnexus10db": "file:../NewsNexus10Db",
+    "openai": "^4.67.3",
+    "puppeteer": "^23.5.0",
+    "sequelize": "^6.37.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.2"
+  }
+}

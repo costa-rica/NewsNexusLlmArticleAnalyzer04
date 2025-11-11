@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-NewsNexus LLM Article Analyzer 03 is a TypeScript microservice that connects to the NewsNexus10 SQLite database to analyze news articles using OpenAI's GPT-4o model. The service identifies consumer product safety hazards in news articles, determining relevance and geographic location (US states).
+NewsNexus LLM Article Analyzer 04 is a TypeScript microservice that connects to the NewsNexus10 SQLite database to analyze news articles using OpenAI's GPT-4o model. The service identifies consumer product safety hazards in news articles, determining relevance and geographic location (US states).
 
 ## Core Architecture
 

@@ -1,4 +1,4 @@
-# NewsNexus LLM Article Analyzer 03
+# NewsNexus LLM Article Analyzer 04
 
 This TypeScript micro service connects to the NewsNexus database and uses OpenAI's GPT-4o model to analyze articles.
 
@@ -68,13 +68,16 @@ If the article is approved then we will create a new row in the ArticleStateCont
 
 This table is meant to handle responses from prompts like the one we are sending to ChatGPT. The table has a key column which is a string and is the name of the key in the response. We will have three other columns “valueString”, “valueNumber”, and “valueBoolean”, where these could be null. Depending on the resposne we will place the value in the appropriate column. "product", "state", and "hazard" will be stored in the “valueString” column. "relevance_score" and "united_states_score" will be stored in the “valueNumber” column.
 
+Use the .env variable NAME_APP to determine the entityWhoCategorizesId which is needed to update a row in the ArticleEntityWhoCategorizedArticleContracts02 table’s entityWhoCategorizesId field. This process is just like when looking up the "NewsNexusSemanticScorer02”. You will find the value corresponding to NAME_APP in the ArtificialIntelligences table and then use the relationship to the EntityWhoCategorizedArticle to determine the entityWhoCategorizesId.
+
 ### use .env file
 
 The .env file should have the following variables:
 
 ```
-NAME_APP=NewsNexusLlmArticleAnalyzer03
+NAME_APP=NewsNexusLlmArticleAnalyzer04
 NAME_DB=newsnexus10.db
 PATH_DATABASE=/Users/nick/Documents/_databases/NewsNexus10/
 KEY_OPEN_AI=sk-SECRET
+TARGET_APPROVED_ARTICLE_COUNT=150
 ```
