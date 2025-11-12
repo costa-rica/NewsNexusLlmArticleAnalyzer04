@@ -80,4 +80,5 @@ NAME_DB=newsnexus10.db
 PATH_DATABASE=/Users/nick/Documents/_databases/NewsNexus10/
 KEY_OPEN_AI=sk-SECRET
 TARGET_APPROVED_ARTICLE_COUNT=150
+PATH_TO_UTILITIES_LLM04=/Users/nick/Documents/_project_resources/NewsNexus10/utilities/llm04
 ```

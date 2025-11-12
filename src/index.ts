@@ -32,6 +32,10 @@ const TARGET_APPROVED_ARTICLE_COUNT = parseInt(
   process.env.TARGET_APPROVED_ARTICLE_COUNT || "0",
   10
 );
+const PATH_TO_UTILITIES_LLM04 = process.env.PATH_TO_UTILITIES_LLM04;
+
+// Command-line arguments
+const SAVE_RESPONSES = process.argv.includes("--save-responses");
 
 // Initialize OpenAI client
 const openai = new OpenAI({ apiKey: KEY_OPEN_AI });
@@ -430,9 +434,33 @@ async function generatePrompt(
 }
 
 /**
+ * Save OpenAI response to JSON file (only if --save-responses flag is set)
+ */
+async function saveResponse(
+  articleId: number,
+  response: any
+): Promise<void> {
+  if (!SAVE_RESPONSES || !PATH_TO_UTILITIES_LLM04) {
+    return;
+  }
+
+  try {
+    const timestamp = Date.now();
+    const filename = `response-${articleId}-${timestamp}.json`;
+    const filepath = `${PATH_TO_UTILITIES_LLM04}/${filename}`;
+
+    await fs.writeFile(filepath, JSON.stringify(response, null, 2), "utf-8");
+    console.log(`  💾 Response saved: ${filename}`);
+  } catch (error) {
+    console.log(`  ⚠ Failed to save response: ${error}`);
+  }
+}
+
+/**
  * Step 4: Send request to OpenAI API
  */
 async function analyzeWithOpenAI(
+  articleId: number,
   prompt: string
 ): Promise<{
   product: string;
@@ -459,6 +487,9 @@ async function analyzeWithOpenAI(
 
     // Parse JSON response
     const parsed = JSON.parse(content);
+
+    // Save response if flag is set
+    await saveResponse(articleId, parsed);
 
     // Validate structure
     if (
@@ -495,6 +526,15 @@ async function recordResults(
   } | null
 ): Promise<boolean> {
   console.log("  Step 5: Recording results...");
+
+  // Delete any existing rows in ArticleEntityWhoCategorizedArticleContracts02
+  // for this article/entity combination to allow reprocessing
+  await ArticleEntityWhoCategorizedArticleContracts02.destroy({
+    where: {
+      articleId: article.id,
+      entityWhoCategorizesId: analyzerEntityId,
+    },
+  });
 
   // Determine if article should be approved
   // Requires: relevance_score 7-10 AND valid state in database
@@ -598,6 +638,14 @@ async function processArticles() {
   console.log("\n=== NewsNexus LLM Article Analyzer 04 ===");
   console.log(`Target approved articles: ${TARGET_APPROVED_ARTICLE_COUNT}`);
 
+  if (SAVE_RESPONSES) {
+    if (PATH_TO_UTILITIES_LLM04) {
+      console.log(`💾 Response saving ENABLED: ${PATH_TO_UTILITIES_LLM04}`);
+    } else {
+      console.log("⚠ --save-responses flag set but PATH_TO_UTILITIES_LLM04 not configured");
+    }
+  }
+
   // Initialize database models
   console.log("\nInitializing database connection...");
   initModels();
@@ -654,7 +702,7 @@ async function processArticles() {
       const prompt = await generatePrompt(article, scrapedContent);
 
       // Step 4: Analyze with OpenAI
-      const apiResponse = await analyzeWithOpenAI(prompt);
+      const apiResponse = await analyzeWithOpenAI(article.id, prompt);
 
       if (apiResponse === null) {
         // OpenAI failed

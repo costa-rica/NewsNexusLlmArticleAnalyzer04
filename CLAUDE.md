@@ -52,6 +52,7 @@ The service runs in a loop until one of two conditions is met:
 - State lookup is case-insensitive against State.name field
 - Invalid API responses create ArticlesApproved02 record with isApproved: false
 - Missing or invalid state in API response results in isApproved: false (even with high relevance_score)
+- **Reprocessing support**: At the start of Step 5, any existing ArticleEntityWhoCategorizedArticleContracts02 rows for the article/entity combination are deleted before inserting new data, allowing articles to be reprocessed without unique constraint errors
 - **ArticlesApproved02 PDF report fields** (only populated when isApproved=true):
   - headlineForPdfReport: article.title
   - publicationNameForPdfReport: article.publicationName
@@ -69,6 +70,14 @@ Required variables in `.env`:
 - PATH_DATABASE: Absolute path to database directory
 - KEY_OPEN_AI: OpenAI API key
 - TARGET_APPROVED_ARTICLE_COUNT: The target number of approved articles to process
+- PATH_TO_UTILITIES_LLM04: (Optional) Directory path for saving API response JSON files when using --save-responses flag
+
+## Command-Line Options
+
+- `--save-responses`: Save all OpenAI API responses to individual JSON files in PATH_TO_UTILITIES_LLM04 directory
+  - Filename format: `response-{articleId}-{timestamp}.json`
+  - Usage: `npm run dev -- --save-responses` or `node dist/index.js --save-responses`
+  - Requires PATH_TO_UTILITIES_LLM04 environment variable to be set
 
 ## Database Tables Reference
 
