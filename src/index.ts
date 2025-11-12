@@ -292,13 +292,64 @@ async function getArticleContent(article: Article): Promise<string> {
     where: { articleId: article.id },
   });
 
-  if (articleContent && articleContent.content) {
-    console.log("  ✓ Using existing scraped content");
+  // If content exists and is >= 400 chars, use it
+  if (articleContent && articleContent.content && articleContent.content.length >= 400) {
+    console.log(`  ✓ Using existing content (${articleContent.content.length} chars)`);
     return articleContent.content;
   }
 
-  // If no content exists, we'll scrape it
-  // (We'll create the record after scraping)
+  // If content exists but < 400 chars, try to re-scrape
+  if (articleContent && articleContent.content && articleContent.content.length < 400) {
+    console.log(`  ⚠ Existing content is short (${articleContent.content.length} chars), attempting re-scrape...`);
+
+    if (!article.url) {
+      console.log("  ⚠ No URL available, keeping existing content");
+      return articleContent.content;
+    }
+
+    const existingLength = articleContent.content.length;
+
+    // Try cheerio first
+    console.log("  Re-scraping with cheerio...");
+    const cheerioContent = await scrapeWithCheerio(article.url);
+
+    // If cheerio gets 400+ chars and is longer than existing, replace
+    if (cheerioContent && cheerioContent.length >= 400 && cheerioContent.length > existingLength) {
+      console.log(`  ✓ Cheerio got better content (${cheerioContent.length} chars), replacing...`);
+      await articleContent.destroy();
+      await ArticleContent.create({
+        articleId: article.id,
+        content: cheerioContent,
+        scrapeStatusCheerio: true,
+        scrapeStatusPuppeteer: null,
+      });
+      return cheerioContent;
+    }
+
+    // If cheerio didn't get 400+ chars, try puppeteer
+    console.log("  Cheerio didn't reach 400 chars, trying puppeteer...");
+    const puppeteerContent = await scrapeWithPuppeteer(article.url);
+
+    // If puppeteer gets content longer than existing, replace
+    if (puppeteerContent && puppeteerContent.length > existingLength) {
+      console.log(`  ✓ Puppeteer got better content (${puppeteerContent.length} chars), replacing...`);
+      await articleContent.destroy();
+      await ArticleContent.create({
+        articleId: article.id,
+        content: puppeteerContent,
+        scrapeStatusCheerio: cheerioContent ? false : null,
+        scrapeStatusPuppeteer: true,
+      });
+      return puppeteerContent;
+    }
+
+    // Neither method improved the content, keep existing
+    console.log("  ✗ Re-scraping didn't improve content, keeping existing");
+    return articleContent.content;
+  }
+
+  // No content exists, perform initial scraping with 250 char threshold
+  console.log("  No existing content, performing initial scrape...");
 
   // Check if article has a URL
   if (!article.url) {
@@ -318,68 +369,40 @@ async function getArticleContent(article: Article): Promise<string> {
 
   if (cheerioContent) {
     console.log(`  ✓ Cheerio successful (${cheerioContent.length} chars)`);
-    if (articleContent) {
-      await articleContent.update({
-        content: cheerioContent,
-        scrapeStatusCheerio: true,
-        scrapeStatusPuppeteer: null,
-      });
-    } else {
-      await ArticleContent.create({
-        articleId: article.id,
-        content: cheerioContent,
-        scrapeStatusCheerio: true,
-        scrapeStatusPuppeteer: null,
-      });
-    }
+    await ArticleContent.create({
+      articleId: article.id,
+      content: cheerioContent,
+      scrapeStatusCheerio: true,
+      scrapeStatusPuppeteer: null,
+    });
     return cheerioContent;
   }
 
   // Cheerio failed, try puppeteer
   console.log("  Cheerio failed, trying puppeteer...");
-  if (articleContent) {
-    await articleContent.update({ scrapeStatusCheerio: false });
-  }
-
   const puppeteerContent = await scrapeWithPuppeteer(article.url);
 
   if (puppeteerContent) {
     console.log(`  ✓ Puppeteer successful (${puppeteerContent.length} chars)`);
-    if (articleContent) {
-      await articleContent.update({
-        content: puppeteerContent,
-        scrapeStatusPuppeteer: true,
-      });
-    } else {
-      await ArticleContent.create({
-        articleId: article.id,
-        content: puppeteerContent,
-        scrapeStatusCheerio: false,
-        scrapeStatusPuppeteer: true,
-      });
-    }
+    await ArticleContent.create({
+      articleId: article.id,
+      content: puppeteerContent,
+      scrapeStatusCheerio: false,
+      scrapeStatusPuppeteer: true,
+    });
     return puppeteerContent;
   }
 
-  // Both failed
+  // Both failed, use description as fallback
   console.log("  ✗ Both scraping methods failed");
   const fallbackContent = article.description || "";
+  await ArticleContent.create({
+    articleId: article.id,
+    content: fallbackContent,
+    scrapeStatusCheerio: false,
+    scrapeStatusPuppeteer: false,
+  });
 
-  if (articleContent) {
-    await articleContent.update({
-      content: fallbackContent,
-      scrapeStatusPuppeteer: false
-    });
-  } else {
-    await ArticleContent.create({
-      articleId: article.id,
-      content: fallbackContent,
-      scrapeStatusCheerio: false,
-      scrapeStatusPuppeteer: false,
-    });
-  }
-
-  // Return description as fallback
   return fallbackContent;
 }
 

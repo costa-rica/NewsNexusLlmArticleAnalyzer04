@@ -22,7 +22,16 @@ The service implements a 5-step sequential pipeline:
 1. **Article Selection**: Queries articles in descending order by Article.id with multiple filters:
    - NewsNexusSemanticScorer02 rating > 0.4 (via ArticleEntityWhoCategorizedArticleContract.keywordRating)
    - **Must NOT exist in ArticleApproveds OR ArticlesApproved02 tables** (prevents duplicate processing)
-2. **Content Scraping**: Two-tier approach - cheerio (fast) with puppeteer (robust) fallback if < 250 characters or failure, 10s timeout each
+2. **Content Scraping**: Adaptive scraping strategy with quality thresholds:
+   - **If existing content ≥ 400 chars**: Use existing content without re-scraping
+   - **If existing content < 400 chars**: Attempt re-scraping to improve quality
+     - Try cheerio first: Replace if result is ≥ 400 chars AND longer than existing
+     - If cheerio < 400 chars: Try puppeteer, replace if result is longer than existing
+     - If neither improves content: Keep existing content
+   - **If no existing content**: Perform initial scraping (250 char minimum threshold)
+     - Try cheerio first (10s timeout), fall back to puppeteer if < 250 chars or failure
+   - **Scrape status tracking**: Updates scrapeStatusCheerio/scrapeStatusPuppeteer flags in ArticleContents
+   - **Content replacement**: Deletes old ArticleContent row and creates new one when better content found
 3. **Prompt Generation**: Template at `src/templates/prompt02.md` with placeholders: `<< ARTICLE_TITLE >>`, `<< ARTICLE_DESCRIPTION >>`, `<< ARTICLE_SCRAPED_CONTENT >>`
 4. **LLM Analysis**: OpenAI API (gpt-4o-mini, max_tokens: 100, temperature: 0) returns structured JSON with product, state, hazard, relevance_score, united_states_score
 5. **Result Recording**: Updates ArticlesApproved02, ArticleStateContract, and ArticleEntityWhoCategorizedArticleContracts02 based on relevance_score (approved if 7-10)
