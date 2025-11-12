@@ -496,9 +496,41 @@ async function recordResults(
 ): Promise<boolean> {
   console.log("  Step 5: Recording results...");
 
-  const isApproved =
+  // Determine if article should be approved
+  // Requires: relevance_score 7-10 AND valid state in database
+  let isApproved = false;
+  let stateId: number | null = null;
+
+  if (
     apiResponse !== null &&
-    [7, 8, 9, 10].includes(apiResponse.relevance_score);
+    [7, 8, 9, 10].includes(apiResponse.relevance_score)
+  ) {
+    // Relevance score is sufficient, now check if state is valid
+    if (apiResponse.state) {
+      const stateName = apiResponse.state.toLowerCase();
+      const state = await State.findOne({
+        where: sequelize.where(
+          sequelize.fn("LOWER", sequelize.col("name")),
+          stateName
+        ),
+      });
+
+      if (state) {
+        // State found - article can be approved
+        isApproved = true;
+        stateId = state.id;
+        console.log(`  ✓ State "${state.name}" validated for approval`);
+      } else {
+        console.log(
+          `  ✗ State "${apiResponse.state}" not found in database - article NOT approved`
+        );
+      }
+    } else {
+      console.log(
+        "  ✗ No state provided in API response - article NOT approved"
+      );
+    }
+  }
 
   // Create ArticlesApproved02 record
   const approvalRecord: any = {
@@ -546,25 +578,13 @@ async function recordResults(
 
     console.log("  ✓ ArticleEntityWhoCategorizedArticleContracts02 records created");
 
-    // If approved, try to link the state
-    if (isApproved && apiResponse.state) {
-      const stateName = apiResponse.state.toLowerCase();
-      const state = await State.findOne({
-        where: sequelize.where(
-          sequelize.fn("LOWER", sequelize.col("name")),
-          stateName
-        ),
+    // If approved, create ArticleStateContract
+    if (isApproved && stateId) {
+      await ArticleStateContract.create({
+        articleId: article.id,
+        stateId: stateId,
       });
-
-      if (state) {
-        await ArticleStateContract.create({
-          articleId: article.id,
-          stateId: state.id,
-        });
-        console.log(`  ✓ ArticleStateContract created (state: ${state.name})`);
-      } else {
-        console.log(`  ⚠ State "${apiResponse.state}" not found in database`);
-      }
+      console.log("  ✓ ArticleStateContract created");
     }
   }
 

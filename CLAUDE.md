@@ -45,9 +45,13 @@ The service runs in a loop until one of two conditions is met:
 
 ### Key Business Rules
 
-- Articles approved when relevance_score is 7, 8, 9, or 10
+- **Article approval requires TWO conditions**:
+  1. relevance_score is 7, 8, 9, or 10 AND
+  2. state from API response matches a state in the State table (case-insensitive)
+  - If either condition fails, isApproved=false
 - State lookup is case-insensitive against State.name field
-- Invalid API responses still create ArticlesApproved02 record with isApproved: false
+- Invalid API responses create ArticlesApproved02 record with isApproved: false
+- Missing or invalid state in API response results in isApproved: false (even with high relevance_score)
 - **ArticlesApproved02 PDF report fields** (only populated when isApproved=true):
   - headlineForPdfReport: article.title
   - publicationNameForPdfReport: article.publicationName
