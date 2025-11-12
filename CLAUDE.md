@@ -48,7 +48,12 @@ The service runs in a loop until one of two conditions is met:
 - Articles approved when relevance_score is 7, 8, 9, or 10
 - State lookup is case-insensitive against State.name field
 - Invalid API responses still create ArticlesApproved02 record with isApproved: false
-- ArticleApprovedTextForPdfReport uses scraped content, falls back to description
+- **ArticlesApproved02 PDF report fields** (only populated when isApproved=true):
+  - headlineForPdfReport: article.title
+  - publicationNameForPdfReport: article.publicationName
+  - publicationDateForPdfReport: article.publishedDate
+  - urlForPdfReport: article.url
+  - textForPdfReport: scraped content (always populated, falls back to description)
 - ArticleEntityWhoCategorizedArticleContracts02 stores API response with typed columns: valueString (product, state, hazard), valueNumber (relevance_score, united_states_score)
 
 ## Environment Configuration

@@ -501,12 +501,22 @@ async function recordResults(
     [7, 8, 9, 10].includes(apiResponse.relevance_score);
 
   // Create ArticlesApproved02 record
-  await ArticlesApproved02.create({
+  const approvalRecord: any = {
     articleId: article.id,
     artificialIntelligenceId: analyzerAiSystemId,
     isApproved,
     textForPdfReport: scrapedContent || article.description || "",
-  });
+  };
+
+  // If approved, populate PDF report fields
+  if (isApproved) {
+    approvalRecord.headlineForPdfReport = article.title;
+    approvalRecord.publicationNameForPdfReport = article.publicationName;
+    approvalRecord.publicationDateForPdfReport = article.publishedDate;
+    approvalRecord.urlForPdfReport = article.url;
+  }
+
+  await ArticlesApproved02.create(approvalRecord);
 
   console.log(`  ✓ ArticlesApproved02 created (isApproved: ${isApproved})`);
 
