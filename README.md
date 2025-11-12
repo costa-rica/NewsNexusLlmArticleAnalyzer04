@@ -2,6 +2,19 @@
 
 This TypeScript micro service connects to the NewsNexus database and uses OpenAI's GPT-4o model to analyze articles.
 
+## How to run
+
+- `npm run dev`
+- `npm run dev -- --save-responses`
+
+### Command Line Options
+
+`--save-responses`: Save all OpenAI API responses to individual JSON files in PATH_TO_UTILITIES_LLM04 directory
+
+- Filename format: `response-{articleId}-{timestamp}.json`
+- Usage: `npm run dev -- --save-responses` or `node dist/index.js --save-responses`
+- Requires PATH_TO_UTILITIES_LLM04 environment variable to be set
+
 ## Requirements
 
 We want to make a micro service that will be written in TypeScript and communicate with the News Nexus 10 platform. It wil connect directly to the NewsNexus10.db which is a sqlite database and the connection will occur using the NewsNexus10Db package. The details for using this package are in the docs/DATABASE_OVERVIEW.md file.
