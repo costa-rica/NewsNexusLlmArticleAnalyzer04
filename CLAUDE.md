@@ -32,7 +32,7 @@ The service implements a 5-step sequential pipeline:
      - Try cheerio first (10s timeout), fall back to puppeteer if < 250 chars or failure
    - **Scrape status tracking**: Updates scrapeStatusCheerio/scrapeStatusPuppeteer flags in ArticleContents
    - **Content replacement**: Deletes old ArticleContent row and creates new one when better content found
-3. **Prompt Generation**: Template at `src/templates/prompt02.md` with placeholders: `<< ARTICLE_TITLE >>`, `<< ARTICLE_DESCRIPTION >>`, `<< ARTICLE_SCRAPED_CONTENT >>`
+3. **Prompt Generation**: Template at `src/templates/prompt03.md` with placeholders: `<< ARTICLE_TITLE >>`, `<< ARTICLE_DESCRIPTION >>`, `<< ARTICLE_SCRAPED_CONTENT >>`
 4. **LLM Analysis**: OpenAI API (gpt-4o-mini, max_tokens: 100, temperature: 0) returns structured JSON with product, state, hazard, relevance_score, united_states_score
 5. **Result Recording**: Updates ArticlesApproved02, ArticleStateContract, and ArticleEntityWhoCategorizedArticleContracts02 based on relevance_score (approved if 7-10)
 
@@ -112,4 +112,4 @@ Required variables in `.env`:
 
 ## LLM Prompt Template
 
-Located at `src/templates/prompt02.md`. Instructs GPT-4o to analyze articles for consumer product safety hazards in the US, returning structured JSON with product, state, hazard, relevance_score (0-10), and united_states_score (0-10). State field must match exact US state names or use "No state mentioned"/"State cannot be determined".
+Located at `src/templates/prompt03.md`. Instructs GPT-4o to analyze articles for consumer product safety hazards in the US, returning structured JSON with product, state, hazard, relevance_score (0-10), and united_states_score (0-10). State field must match exact US state names or use "No state mentioned"/"State cannot be determined".

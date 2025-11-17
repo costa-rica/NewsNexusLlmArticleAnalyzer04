@@ -1,4 +1,4 @@
-# Prompt 01
+# Prompt 02
 
 ## Instructions to the model
 

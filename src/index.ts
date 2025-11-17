@@ -297,14 +297,26 @@ async function getArticleContent(article: Article): Promise<string> {
   });
 
   // If content exists and is >= 400 chars, use it
-  if (articleContent && articleContent.content && articleContent.content.length >= 400) {
-    console.log(`  ✓ Using existing content (${articleContent.content.length} chars)`);
+  if (
+    articleContent &&
+    articleContent.content &&
+    articleContent.content.length >= 400
+  ) {
+    console.log(
+      `  ✓ Using existing content (${articleContent.content.length} chars)`
+    );
     return articleContent.content;
   }
 
   // If content exists but < 400 chars, try to re-scrape
-  if (articleContent && articleContent.content && articleContent.content.length < 400) {
-    console.log(`  ⚠ Existing content is short (${articleContent.content.length} chars), attempting re-scrape...`);
+  if (
+    articleContent &&
+    articleContent.content &&
+    articleContent.content.length < 400
+  ) {
+    console.log(
+      `  ⚠ Existing content is short (${articleContent.content.length} chars), attempting re-scrape...`
+    );
 
     if (!article.url) {
       console.log("  ⚠ No URL available, keeping existing content");
@@ -318,8 +330,14 @@ async function getArticleContent(article: Article): Promise<string> {
     const cheerioContent = await scrapeWithCheerio(article.url);
 
     // If cheerio gets 400+ chars and is longer than existing, replace
-    if (cheerioContent && cheerioContent.length >= 400 && cheerioContent.length > existingLength) {
-      console.log(`  ✓ Cheerio got better content (${cheerioContent.length} chars), replacing...`);
+    if (
+      cheerioContent &&
+      cheerioContent.length >= 400 &&
+      cheerioContent.length > existingLength
+    ) {
+      console.log(
+        `  ✓ Cheerio got better content (${cheerioContent.length} chars), replacing...`
+      );
       await articleContent.destroy();
       await ArticleContent.create({
         articleId: article.id,
@@ -336,7 +354,9 @@ async function getArticleContent(article: Article): Promise<string> {
 
     // If puppeteer gets content longer than existing, replace
     if (puppeteerContent && puppeteerContent.length > existingLength) {
-      console.log(`  ✓ Puppeteer got better content (${puppeteerContent.length} chars), replacing...`);
+      console.log(
+        `  ✓ Puppeteer got better content (${puppeteerContent.length} chars), replacing...`
+      );
       await articleContent.destroy();
       await ArticleContent.create({
         articleId: article.id,
@@ -419,7 +439,7 @@ async function generatePrompt(
 ): Promise<string> {
   console.log("  Step 3: Generating prompt...");
 
-  const templatePath = "src/templates/prompt02.md";
+  const templatePath = "src/templates/prompt03.md";
   let template = await fs.readFile(templatePath, "utf-8");
 
   template = template.replace("<< ARTICLE_TITLE >>", article.title || "");
@@ -436,10 +456,7 @@ async function generatePrompt(
 /**
  * Save OpenAI response to JSON file (only if --save-responses flag is set)
  */
-async function saveResponse(
-  articleId: number,
-  response: any
-): Promise<void> {
+async function saveResponse(articleId: number, response: any): Promise<void> {
   if (!SAVE_RESPONSES || !PATH_TO_UTILITIES_LLM04) {
     return;
   }
@@ -499,7 +516,9 @@ async function analyzeWithOpenAI(
       typeof parsed.relevance_score === "number" &&
       typeof parsed.united_states_score === "number"
     ) {
-      console.log(`  ✓ OpenAI response: relevance_score=${parsed.relevance_score}`);
+      console.log(
+        `  ✓ OpenAI response: relevance_score=${parsed.relevance_score}`
+      );
       return parsed;
     } else {
       console.log("  ✗ Invalid response format");
@@ -616,7 +635,9 @@ async function recordResults(
       });
     }
 
-    console.log("  ✓ ArticleEntityWhoCategorizedArticleContracts02 records created");
+    console.log(
+      "  ✓ ArticleEntityWhoCategorizedArticleContracts02 records created"
+    );
 
     // If approved, create ArticleStateContract
     if (isApproved && stateId) {
@@ -642,7 +663,9 @@ async function processArticles() {
     if (PATH_TO_UTILITIES_LLM04) {
       console.log(`💾 Response saving ENABLED: ${PATH_TO_UTILITIES_LLM04}`);
     } else {
-      console.log("⚠ --save-responses flag set but PATH_TO_UTILITIES_LLM04 not configured");
+      console.log(
+        "⚠ --save-responses flag set but PATH_TO_UTILITIES_LLM04 not configured"
+      );
     }
   }
 
@@ -712,9 +735,7 @@ async function processArticles() {
         );
 
         if (consecutiveOpenAiFailures >= 3) {
-          throw new Error(
-            "3 consecutive OpenAI failures. Exiting service."
-          );
+          throw new Error("3 consecutive OpenAI failures. Exiting service.");
         }
 
         // Skip this article and continue to next
@@ -725,11 +746,17 @@ async function processArticles() {
       consecutiveOpenAiFailures = 0;
 
       // Step 5: Record results
-      const approved = await recordResults(article, scrapedContent, apiResponse);
+      const approved = await recordResults(
+        article,
+        scrapedContent,
+        apiResponse
+      );
 
       if (approved) {
         articlesApproved++;
-        console.log(`  ✓ Article APPROVED (${articlesApproved}/${TARGET_APPROVED_ARTICLE_COUNT})`);
+        console.log(
+          `  ✓ Article APPROVED (${articlesApproved}/${TARGET_APPROVED_ARTICLE_COUNT})`
+        );
       } else {
         console.log("  ✗ Article not approved");
       }

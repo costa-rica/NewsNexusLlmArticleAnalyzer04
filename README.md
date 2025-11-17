@@ -41,7 +41,7 @@ The scraped data will be placed in the ArticlesContent table. The scraped conten
 
 ### Step 3: save scraped content and create prompt
 
-Once the scraping has been completed a message will be created using the src/tempaltes/prompt02.md file. The service will create a prompt for the ChatGPT model api request. This prompt02.md file has `<< ARTICLE_TITLE >>`, `<< ARTICLE_DESCRIPTION >>`, and `<< ARTICLE_SCRAPED_CONTENT >>` strings that should be replaced with the article title and description from the article being analzyed, then the scrapped content will replace the `<< ARTICLE_SCRAPED_CONTENT >>` string.
+Once the scraping has been completed a message will be created using the src/tempaltes/prompt03.md file. The service will create a prompt for the ChatGPT model api request. This prompt03.md file has `<< ARTICLE_TITLE >>`, `<< ARTICLE_DESCRIPTION >>`, and `<< ARTICLE_SCRAPED_CONTENT >>` strings that should be replaced with the article title and description from the article being analzyed, then the scrapped content will replace the `<< ARTICLE_SCRAPED_CONTENT >>` string.
 
 ### Step 4: send ChatGPT api request
 
