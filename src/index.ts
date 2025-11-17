@@ -5,9 +5,13 @@ import puppeteer from "puppeteer";
 import axios from "axios";
 import * as fs from "fs/promises";
 import OpenAI from "openai";
+import { initializeConsoleLogger } from "./utils/consoleLogger";
 
 // Load environment variables
 dotenv.config();
+
+// Initialize console logger - overwrites log file on each run
+initializeConsoleLogger("microservice-output.log");
 
 // Import database models from NewsNexus10Db package
 import {
