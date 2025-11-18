@@ -785,6 +785,7 @@ async function processArticles() {
       }
     } catch (error) {
       console.error(`  ✗ Error processing article: ${error}`);
+      console.error((error as Error).stack || error);
       throw error;
     }
   }
