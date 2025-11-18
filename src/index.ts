@@ -643,13 +643,24 @@ async function recordResults(
       "  ✓ ArticleEntityWhoCategorizedArticleContracts02 records created"
     );
 
-    // If approved, create ArticleStateContract
+    // If approved, create ArticleStateContract (only if it doesn't already exist)
     if (isApproved && stateId) {
-      await ArticleStateContract.create({
-        articleId: article.id,
-        stateId: stateId,
+      const existingStateContract = await ArticleStateContract.findOne({
+        where: {
+          articleId: article.id,
+          stateId: stateId,
+        },
       });
-      console.log("  ✓ ArticleStateContract created");
+
+      if (existingStateContract) {
+        console.log("  ✓ ArticleStateContract already exists (skipped)");
+      } else {
+        await ArticleStateContract.create({
+          articleId: article.id,
+          stateId: stateId,
+        });
+        console.log("  ✓ ArticleStateContract created");
+      }
     }
   }
 
